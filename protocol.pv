@@ -48,7 +48,7 @@ query attacker(PWU);
 	  attacker(sN);
 	  attacker(sC).
 
-(*User进程*)
+(*process of RD*)
 let processRD =
 	event RDAuthStart(IDU);
 	let QU = mult(sU, P) in
@@ -71,7 +71,7 @@ let processRD =
 	if auth = mac(h, PWU) then
 		event RDAuthEnd(IDU).
 	
-(*Bob进程*)
+(*process of IC*)
 let processIC =
 	event ICAuthStart(IDC);
 	let QC = mult(sC, P) in
@@ -90,7 +90,7 @@ let processIC =
 			out(ch3, auth).
 
 
-(* Trusted key server. *)
+(* process of NMC *)
 let processNMC = 
 	let QN = mult(sN, P) in
 	in(ch1, (hU: bitstring, QU: bitstring));
@@ -101,6 +101,6 @@ let processNMC =
 	out(ch1, (IndU, DU, K));
 	out(ch2, (IndU, QU, K)).
 
-(*主函数*)
+(* proverif main process *)
 process
 	((!processRD) | (!processNMC) | (!processIC))
