@@ -1,0 +1,106 @@
+free ch1: channel.
+free ch2: channel.
+free ch3: channel.
+
+const IDU: bitstring. (* identity of U *)
+const IDC: bitstring. (* identity of C *)
+const IDN: bitstring. (* identity of N *)
+free PWU: bitstring [private].
+free PWC: bitstring [private].
+free sU: bitstring [private].
+free sN: bitstring [private].
+free sC: bitstring [private].
+
+(* ECC operation *)
+const P: bitstring.
+const d: bitstring [private].
+fun mult(bitstring, bitstring): bitstring.
+fun addt(bitstring, bitstring): bitstring.
+
+(* Number operation *)
+fun mod(bitstring, bitstring): bitstring.
+fun inv(bitstring): bitstring.
+fun mul(bitstring, bitstring): bitstring.
+fun add(bitstring, bitstring): bitstring.
+fun div(bitstring, bitstring): bitstring.
+fun minus(bitstring): bitstring.
+
+(* Other important function *)
+fun hash1(bitstring): bitstring.
+fun hash2(bitstring, bitstring): bitstring. 
+fun hash4(bitstring, bitstring, bitstring, bitstring): bitstring. 
+fun mac(bitstring, bitstring): bitstring.
+fun xor(bitstring, bitstring): bitstring.
+equation forall x: bitstring, y: bitstring; xor(xor(x, y), y) = x.
+
+event RDAuthStart(bitstring).
+event RDAuthEnd(bitstring).
+event ICAuthStart(bitstring).
+event ICAuthEnd(bitstring).
+
+query x: bitstring; inj-event(RDAuthEnd(x)) ==> inj-event(RDAuthStart(x)).
+query x: bitstring; inj-event(ICAuthEnd(x)) ==> inj-event(ICAuthStart(x)).
+
+
+query attacker(PWU);
+	  attacker(PWC);
+	  attacker(sU);
+	  attacker(sN);
+	  attacker(sC).
+
+(*User进程*)
+let processRD =
+	event RDAuthStart(IDU);
+	let QU = mult(sU, P) in
+	let hU = hash1(IDU) in
+	out(ch1, (hU, QU));
+	in(ch1, (IndU: bitstring, DU: bitstring, K: bitstring));
+	in(ch3, QC: bitstring);
+	new t: bitstring;
+	let T = mult(t, QC) in
+	new tc: bitstring;
+	let h = hash2(T, tc) in
+	let c = xor(IndU, h) in
+	let r = hash4(IndU, T, QU, tc) in
+	let u = hash2(hU, QU) in
+	let v = div(t, add(r, add(mul(IndU, DU), minus(u)))) in
+	let sigma = mul(inv(t), add(sU, mul(h, DU))) in
+	out(ch3, (c, r, v, sigma, tc));
+	let PWU = hash2(h, T) in
+	in(ch3, (auth: bitstring));
+	if auth = mac(h, PWU) then
+		event RDAuthEnd(IDU).
+	
+(*Bob进程*)
+let processIC =
+	event ICAuthStart(IDC);
+	let QC = mult(sC, P) in
+	out(ch3, QC);
+	in(ch2, (IndU: bitstring, QU: bitstring, K: bitstring));
+	in(ch3, (c: bitstring, r: bitstring, v: bitstring, sigma: bitstring, tc: bitstring));
+	let omega = mult(v, addt(mult(r, P), QU)) in
+	let T' = mult(sC, omega) in
+	let h' = hash2(T', tc) in
+	let m = xor(c, h') in
+	if r = hash4(IndU, T', QU, tc) then
+		if mult(sigma, T') = mult(sC, addt(addt(QU, mult(mul(h', inv(IndU)), QU)), mult(h', K))) then
+			event ICAuthEnd(IDC);
+			let PWC = hash2(h', T') in
+			let auth = mac(h', PWC) in
+			out(ch3, auth).
+
+
+(* Trusted key server. *)
+let processNMC = 
+	let QN = mult(sN, P) in
+	in(ch1, (hU: bitstring, QU: bitstring));
+	new k: bitstring;
+	let K = mult(k, P) in
+	let IndU = mul(inv(k), hash2(hU, QU)) in
+	let DU = add(mul(inv(IndU), sN), k) in
+	out(ch1, (IndU, DU, K));
+	out(ch2, (IndU, QU, K)).
+
+(*主函数*)
+process
+	((!processRD) | (!processNMC) | (!processIC))
